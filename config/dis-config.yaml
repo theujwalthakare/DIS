@@ -1,0 +1,45 @@
+# Digital Immune System Configuration
+# ====================================
+
+# aDC Agent Configuration
+adc:
+  collect_interval: 10  # seconds between metric collections
+  
+# T-Helper Layer Configuration
+thelper:
+  use_isolation_forest: true
+  use_autoencoder: true
+  input_dim: 4
+  training_samples: 1000
+  detection_interval: 30  # seconds between anomaly detection runs
+  
+  # Isolation Forest parameters
+  isolation_forest:
+    contamination: 0.1
+    n_estimators: 100
+  
+  # Autoencoder parameters
+  autoencoder:
+    encoding_dim: 8
+    epochs: 50
+    batch_size: 32
+    threshold_percentile: 95
+
+# B-Cell Memory Layer Configuration
+bcell:
+  memory_retention_hours: 24
+  
+  # Response thresholds
+  severity_thresholds:
+    high: 90   # CPU/Memory > 90% = high severity
+    medium: 75 # CPU/Memory > 75% = medium severity
+
+# Prometheus Configuration
+prometheus:
+  port: 8000
+  scrape_interval: 15s
+
+# Logging Configuration
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
