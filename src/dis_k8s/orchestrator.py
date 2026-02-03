@@ -172,7 +172,8 @@ class DISOrchestrator:
         """
         # Round features to reduce noise
         rounded = np.round(features, decimals=1)
-        signature = hashlib.md5(rounded.tobytes()).hexdigest()
+        # Use SHA-256 for better collision resistance
+        signature = hashlib.sha256(rounded.tobytes()).hexdigest()
         return signature
 
     def monitor_loop(self):

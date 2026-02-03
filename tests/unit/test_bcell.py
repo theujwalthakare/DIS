@@ -24,7 +24,7 @@ class TestMemoryCell:
         assert cell.threat_signature == 'test-threat-123'
         assert cell.pod_name == 'test-pod'
         assert cell.response_action == 'isolate'
-        assert cell.success == True
+        assert cell.success is True
     
     def test_memory_cell_to_dict(self):
         """Test converting memory cell to dictionary"""

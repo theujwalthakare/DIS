@@ -14,7 +14,7 @@ class TestIsolationForestDetector:
         """Test detector initialization"""
         detector = IsolationForestDetector(contamination=0.1, n_estimators=50)
         
-        assert detector.is_fitted == False
+        assert detector.is_fitted is False
         assert detector.model.contamination == 0.1
         assert detector.model.n_estimators == 50
     
@@ -27,7 +27,7 @@ class TestIsolationForestDetector:
         normal_data = np.random.randn(100, 4) * 10 + 50
         detector.train(normal_data)
         
-        assert detector.is_fitted == True
+        assert detector.is_fitted is True
         
         # Test on normal data
         predictions, scores = detector.predict(normal_data[:10])
