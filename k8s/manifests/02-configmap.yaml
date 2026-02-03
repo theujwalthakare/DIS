@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dis-config
+  namespace: dis-system
+data:
+  dis-config.yaml: |
+    adc:
+      collect_interval: 10
+    thelper:
+      use_isolation_forest: true
+      use_autoencoder: true
+      input_dim: 4
+      detection_interval: 30
+    bcell:
+      memory_retention_hours: 24
+    prometheus:
+      port: 8000
+    logging:
+      level: INFO

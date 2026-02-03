@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: dis-agent
+  namespace: dis-system
+  labels:
+    app: dis-agent
+spec:
+  selector:
+    matchLabels:
+      app: dis-agent
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
