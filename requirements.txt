@@ -1,0 +1,10 @@
+psutil>=5.9
+prometheus-client>=0.14
+kubernetes>=24.0.0
+scikit-learn>=1.2
+joblib>=1.2
+pyyaml>=6.0
+
+# Note: TensorFlow is optional and may not be available for all Python versions
+# Install TensorFlow separately if you need the autoencoder trainer:
+# python -m pip install tensorflow

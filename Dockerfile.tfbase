@@ -1,0 +1,22 @@
+FROM tensorflow/tensorflow:2.12.0
+
+WORKDIR /app
+
+# Copy requirements and install
+COPY requirements.txt ./
+COPY ml/requirements.txt ml/requirements.txt
+
+RUN python -m pip install --upgrade pip setuptools wheel
+RUN pip install -r requirements.txt
+RUN pip install -r ml/requirements.txt
+
+# Copy any trained models into the image (if present at build time)
+# This makes it easier for in-cluster Jobs to access pre-trained artifacts.
+COPY ml/models /app/ml/models
+
+# Copy repository contents
+COPY . .
+
+# Default command runs the Keras autoencoder trainer; mount data and models
+# when running locally to persist artifacts
+CMD ["python", "ml/train_autoencoder.py", "--input", "data/metrics.csv", "--out", "ml/models/autoencoder"]

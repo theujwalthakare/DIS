@@ -1,0 +1,11 @@
+version: '3.8'
+services:
+  autoencoder:
+    build:
+      context: .
+      dockerfile: Dockerfile.tfbase
+    image: dis-autoencoder:tfbase
+    volumes:
+      - ./data:/app/data
+      - ./ml/models:/app/ml/models
+    command: ["python", "ml/train_autoencoder.py", "--input", "data/metrics.csv", "--out", "ml/models/autoencoder"]

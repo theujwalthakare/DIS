@@ -1,0 +1,13 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: cpu-stress
+spec:
+  action: cpu
+  mode: one
+  selector:
+    labelSelectors:
+      app: example-app
+  stressors:
+    cpu: 2
+  duration: '60s'

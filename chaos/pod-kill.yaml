@@ -1,0 +1,11 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kill-example-pod
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    labelSelectors:
+      app: example-app
+  duration: '30s'
