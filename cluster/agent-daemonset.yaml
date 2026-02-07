@@ -15,10 +15,36 @@ spec:
     spec:
       containers:
         - name: adc-agent
-          image: ghcr.io/your-org/adc-agent:latest
+          image: python:3.11-slim
+          command: ["python", "/app/agents/adc_agent.py"]
           ports:
             - containerPort: 8000
           env:
-            - name: PROMETHEUS_PORT
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ADC_PORT
               value: "8000"
+            - name: COLLECTION_INTERVAL
+              value: "5"
+          volumeMounts:
+            - name: app-volume
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: app-volume
+          hostPath:
+            path: /mnt/dis-app
+            type: Directory
       serviceAccountName: adc-agent-sa

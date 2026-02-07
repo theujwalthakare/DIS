@@ -34,6 +34,10 @@ RESULTS = ROOT / 'results'
 FIG_DIR = RESULTS / 'figures'
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
+# Standard feature columns for 100K dataset
+FEATURE_COLS = ['cpu_percent', 'mem_percent', 'net_tx', 'net_rx',
+                'disk_read', 'disk_write', 'http_req_rate', 'response_ms']
+
 
 def load_data():
     """Load metrics CSV with ground truth labels."""
@@ -43,7 +47,7 @@ def load_data():
 
 
 def load_dis_models():
-    """Load trained DIS models (Isolation Forest and Autoencoder)."""
+    """Load trained DIS models (Isolation Forest, Autoencoder, OCSVM)."""
     models = {}
     
     iforest_paths = [RESULTS / 'iforest.joblib', ROOT / 'ml' / 'models' / 'iforest.joblib']
@@ -58,24 +62,41 @@ def load_dis_models():
             models['DIS: Autoencoder'] = ('ae', joblib.load(p))
             break
     
+    ocsvm_paths = [RESULTS / 'ocsvm.joblib', ROOT / 'ml' / 'models' / 'ocsvm.joblib']
+    for p in ocsvm_paths:
+        if p.exists():
+            models['DIS: One-Class SVM'] = ('ocsvm', joblib.load(p))
+            break
+    
     return models
 
 
-def create_baseline_models(X_train, contamination_ratio):
-    """Create and train baseline anomaly detection models."""
+def create_baseline_models(X_train, contamination_ratio, max_samples=10000):
+    """Create and train baseline anomaly detection models.
+    
+    For slow baselines, samples data if n_samples > max_samples.
+    """
     baselines = {}
+    
+    # Sample if dataset is too large for slow algorithms
+    if len(X_train) > max_samples:
+        print(f"  Sampling {max_samples} samples for slow baselines (from {len(X_train)})")
+        indices = np.random.choice(len(X_train), max_samples, replace=False)
+        X_sample = X_train[indices]
+    else:
+        X_sample = X_train
     
     # Local Outlier Factor
     print("  Training Local Outlier Factor...")
     lof = LocalOutlierFactor(n_neighbors=20, contamination=contamination_ratio, novelty=True)
-    lof.fit(X_train)
+    lof.fit(X_sample)
     baselines['Baseline: LOF'] = ('lof', lof)
     
     # Elliptic Envelope (robust covariance)
     print("  Training Elliptic Envelope...")
     try:
         ee = EllipticEnvelope(contamination=contamination_ratio, random_state=42)
-        ee.fit(X_train)
+        ee.fit(X_sample)
         baselines['Baseline: Elliptic Envelope'] = ('ee', ee)
     except Exception as e:
         print(f"    Warning: Elliptic Envelope failed - {e}")
@@ -83,7 +104,7 @@ def create_baseline_models(X_train, contamination_ratio):
     # One-Class SVM
     print("  Training One-Class SVM...")
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_train)
+    X_scaled = scaler.fit_transform(X_sample)
     ocsvm = OneClassSVM(kernel='rbf', gamma='auto', nu=contamination_ratio)
     ocsvm.fit(X_scaled)
     baselines['Baseline: One-Class SVM'] = ('ocsvm', (ocsvm, scaler))
@@ -100,7 +121,15 @@ def create_baseline_models(X_train, contamination_ratio):
 def compute_scores(models, X, model_type, model_obj):
     """Compute anomaly scores for a model."""
     if model_type == 'iforest':
-        return -model_obj.score_samples(X)  # Negate so higher = anomalous
+        # Handle dict format with scaler
+        if isinstance(model_obj, dict):
+            model = model_obj.get('model')
+            scaler = model_obj.get('scaler')
+            Xs = scaler.transform(X) if scaler is not None else X
+        else:
+            model = model_obj
+            Xs = X
+        return -model.score_samples(Xs)  # Negate so higher = anomalous
     
     elif model_type == 'ae':
         ae = model_obj
@@ -117,9 +146,50 @@ def compute_scores(models, X, model_type, model_obj):
         return -model_obj.score_samples(X)  # Negate so higher = anomalous
     
     elif model_type == 'ocsvm':
-        ocsvm, scaler = model_obj
-        X_scaled = scaler.transform(X)
-        return -ocsvm.decision_function(X_scaled)  # Negate so higher = anomalous
+        # Handle both dict format (DIS) and tuple format (baseline)
+        if isinstance(model_obj, dict):
+            model = model_obj.get('model')
+            scaler = model_obj.get('scaler')
+            Xs = scaler.transform(X) if scaler is not None else X
+            return -model.decision_function(Xs)  # Negate so higher = anomalous
+        else:
+            ocsvm, scaler = model_obj
+            X_scaled = scaler.transform(X)
+            return -ocsvm.decision_function(X_scaled)  # Negate so higher = anomalous
+    
+    elif model_type == 'ensemble':
+        # Weighted ensemble - compute component scores and combine
+        config = model_obj
+        weights = config.get('weights', {})
+        
+        # Compute scores for each component model
+        scores_dict = {}
+        for name in weights.keys():
+            if name == 'iforest' and 'DIS: Isolation Forest' in models:
+                _, m = models['DIS: Isolation Forest']
+                scores_dict[name] = compute_scores(models, X, 'iforest', m)
+            elif name == 'ocsvm' and 'DIS: One-Class SVM' in models:
+                _, m = models['DIS: One-Class SVM']
+                scores_dict[name] = compute_scores(models, X, 'ocsvm', m)
+            elif name == 'ae' and 'DIS: Autoencoder' in models:
+                _, m = models['DIS: Autoencoder']
+                scores_dict[name] = compute_scores(models, X, 'ae', m)
+        
+        if not scores_dict:
+            return None
+        
+        # Normalize and combine
+        normalized = {}
+        for name, s in scores_dict.items():
+            s_norm = (s - s.min()) / (s.max() - s.min() + 1e-10)
+            normalized[name] = s_norm
+        
+        ensemble_scores = np.zeros(len(X))
+        for name, s_norm in normalized.items():
+            w = weights.get(name, 1.0 / len(normalized))
+            ensemble_scores += w * s_norm
+        
+        return ensemble_scores
     
     elif model_type == 'zscore':
         mean, std = model_obj
@@ -308,9 +378,18 @@ def main():
     
     # Load data
     df = load_data()
-    y_true = df['label'].values.astype(int)
-    feature_cols = [c for c in df.columns if c != 'label']
-    X = df[feature_cols].select_dtypes(include=['number']).fillna(0).values
+    
+    # Support both 'is_anomaly' and 'label' columns
+    if 'is_anomaly' in df.columns:
+        y_true = df['is_anomaly'].values.astype(int)
+    elif 'label' in df.columns:
+        y_true = df['label'].values.astype(int)
+    else:
+        raise ValueError("Data must contain 'is_anomaly' or 'label' column")
+    
+    # Use standard feature columns
+    available_cols = [c for c in FEATURE_COLS if c in df.columns]
+    X = df[available_cols].fillna(0).values
     
     n_samples = len(y_true)
     n_anomalies = np.sum(y_true)
@@ -322,7 +401,7 @@ def main():
     print("\nLoading DIS models...")
     dis_models = load_dis_models()
     for name in dis_models:
-        print(f"  ✓ {name}")
+        print(f"  [OK] {name}")
     
     # Train on normal data only for novelty detection
     X_normal = X[y_true == 0]
@@ -337,10 +416,27 @@ def main():
     print("\nEvaluating models...")
     results = {}
     
+    # For very slow methods (OCSVM), sample the evaluation data
+    MAX_EVAL_SAMPLES = 20000
+    if len(X) > MAX_EVAL_SAMPLES:
+        np.random.seed(42)
+        eval_idx = np.random.choice(len(X), MAX_EVAL_SAMPLES, replace=False)
+        X_eval = X.iloc[eval_idx] if hasattr(X, 'iloc') else X[eval_idx]
+        y_eval = y_true.iloc[eval_idx] if hasattr(y_true, 'iloc') else y_true[eval_idx]
+        print(f"  (Using {MAX_EVAL_SAMPLES} samples for slow methods)")
+    else:
+        X_eval = X
+        y_eval = y_true
+    
     for name, (model_type, model_obj) in all_models.items():
         try:
-            scores = compute_scores(all_models, X, model_type, model_obj)
-            results[name] = evaluate_model(y_true, scores, name)
+            # Use sampled data for OCSVM which is very slow
+            if model_type == 'ocsvm':
+                scores = compute_scores(all_models, X_eval, model_type, model_obj)
+                results[name] = evaluate_model(y_eval, scores, name)
+            else:
+                scores = compute_scores(all_models, X, model_type, model_obj)
+                results[name] = evaluate_model(y_true, scores, name)
             print(f"  ✓ {name}: AUPRC = {results[name]['auprc']:.4f}")
         except Exception as e:
             print(f"  ✗ {name}: Failed - {e}")

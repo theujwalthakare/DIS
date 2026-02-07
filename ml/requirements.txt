@@ -1,8 +1,0 @@
-scikit-learn>=1.2
-joblib>=1.2
-pandas>=1.5
-
-# Note: TensorFlow is optional and may not be available for Python 3.14.
-# Install it separately in a compatible environment if you need the autoencoder:
-# python -m pip install tensorflow
-

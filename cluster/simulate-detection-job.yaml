@@ -14,20 +14,28 @@ spec:
       restartPolicy: Never
       containers:
         - name: simulate
-          # Uses the TF base image built locally earlier; change image/pull policy
-          # as needed for your cluster (IfNotPresent / Never / image from registry).
-          image: dis-autoencoder:tfbase
-          # prefer local image when testing on Docker Desktop; set to IfNotPresent
-          # if you push to a registry. Using Never forces the node to use the
-          # already-built local image (no pull attempt).
-          imagePullPolicy: Never
+          image: python:3.11-slim
+          imagePullPolicy: Always
           command:
-            - python
-            - /app/scripts/simulate_detection.py
-            - --label
-            - app=example-app
-            - --namespace
-            - default
-          # If you need the model inside the container, build an image that
-          # copies `ml/models/iforest.joblib` into /app/ml/models, or mount a
-          # PersistentVolume with the model.
+            - sh
+            - -c
+            - |
+              pip install -q scikit-learn pandas numpy && \
+              python /app/scripts/simulate_detection.py \
+                --label app=example-app \
+                --namespace default
+          volumeMounts:
+            - name: app-volume
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+      volumes:
+        - name: app-volume
+          hostPath:
+            path: /mnt/dis-app
+            type: Directory

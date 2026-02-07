@@ -33,11 +33,11 @@ This repository implements a **Cognitive Overlay Digital Immune System (DIS)** f
                                   │
                                   ▼
                     ┌──────────────────────────┐
-                    │  data/metrics.csv        │
-                    │  (970 samples, 9 features)│
-                    │  - Normal: 700 samples   │
-                    │  - Anomalies: 270 samples│
-                    │  - Ground truth labels   │
+                    │  data/metrics.csv (100k) │
+                    │  (100,000 samples, 8 features)  │
+                    │  - Normal: 96,311 samples       │
+                    │  - Anomalies: 3,689 samples     │
+                    │  - Ground truth labels          │
                     └──────────────────────────┘
                                   │
 ┌─────────────────────────────────┴───────────────────────────────────┐
@@ -53,7 +53,7 @@ This repository implements a **Cognitive Overlay Digital Immune System (DIS)** f
     └───────────────────────────┘   └──────────────────────────┘
                     │                           │
                     ▼                           ▼
-         ml/models/iforest.joblib    ml/models/ae_sklearn.joblib
+         ml/models/iforest_100k.joblib    ml/models/autoencoder_100k.joblib
                     │                           │
 ┌───────────────────┴───────────────────────────┴───────────────────┐
 │              DEPLOYMENT PHASE (Kubernetes Cluster)                │
@@ -139,44 +139,51 @@ This repository implements a **Cognitive Overlay Digital Immune System (DIS)** f
 
 | Technology | Version | Purpose | Component |
 |------------|---------|---------|-----------|
-| **Python** | 3.11/3.14 | Primary language | All modules |
-| **Kubernetes** | 1.28+ | Orchestration platform | Deployment runtime |
+| **Python** | 3.11+ | Primary language | All modules |
+| **Kubernetes** | 1.28+ (minikube) | Orchestration platform | Deployment runtime |
 | **Docker** | 24.0+ | Containerization | Image builds |
-| **scikit-learn** | 1.8.0 | Machine learning | Isolation Forest, Autoencoder |
-| **TensorFlow** | 2.12.0 | Deep learning (optional) | Keras Autoencoder |
-| **Chaos Mesh** | 2.6+ | Fault injection | Chaos experiments |
+| **scikit-learn** | 1.8.0 | Machine learning | IsolationForest, Autoencoder |
+| **pandas** | 2.0+ | Data processing | CSV handling, metrics |
+| **numpy** | 1.26+ | Numerical computing | Feature engineering |
 
 ### Python Libraries
 
 **Machine Learning & Data Processing:**
-- `scikit-learn`: Isolation Forest, MLPRegressor autoencoder, preprocessing
-- `pandas`: Data loading, CSV manipulation
-- `numpy`: Numerical operations, array processing
-- `joblib`: Model serialization
+- `scikit-learn`: IsolationForest, MLPRegressor autoencoder, preprocessing
+- `pandas`: Data loading, CSV I/O, metric aggregation
+- `numpy`: Vectorized operations, feature scaling
+- `joblib`: ML model serialization/deserialization
 
 **Kubernetes Integration:**
-- `kubernetes`: Python client for K8s API operations
-- Pod management, deployment manipulation, label patching
+- `kubernetes`: Python client for K8s API
+- Pod lifecycle management, deployment operations, label patching
 
-**Monitoring & Metrics:**
-- `psutil`: System metrics collection (CPU, memory, disk, network)
+**System Monitoring:**
+- `psutil`: CPU, memory, disk, network metrics collection
 - `prometheus-client`: Metrics exposition (optional)
 
 **Visualization:**
-- `matplotlib`: Figure generation, histograms, timeseries plots
+- `matplotlib`: PNG figure generation (histograms, timeseries, distributions)
+- `seaborn`: Statistical data visualization
 
 **Container Base Images:**
-- `tensorflow/tensorflow:2.12.0`: TensorFlow-enabled trainer image
-- `python:3.11-slim`: Lightweight production images
+- `python:3.11-slim`: Primary production image for agents and jobs
+- `nginx:1.25`: Test workload (example-app)
 
 ### Infrastructure Components
 
 **Kubernetes Resources:**
-- **DaemonSet**: ADC agent on every node
-- **Deployment**: Example application workload
-- **Job**: In-cluster detection simulator
-- **Service**: Exposes example application
-- **ServiceAccount + RBAC**: Permissions for agents and controllers
+- **DaemonSet**: ADC agent runs on all cluster nodes
+- **Deployment**: Example nginx workload (2x replicas)
+- **Job**: Kubernetes batch job for detection simulation
+- **Service**: ClusterIP service for example-app
+- **ServiceAccount + RBAC**: Role-based access control
+- **ConfigMap**: Prometheus scrape configuration
+
+**Deployment Pattern:**
+- **hostPath volumes**: Mount application code `/mnt/dis-app` for container access
+- **Resource requests/limits**: CPU (100m-500m), memory (128Mi-1Gi)
+- **Image pull policy**: IfNotPresent (uses minikube Docker environment)
 
 **Chaos Engineering:**
 - **PodChaos**: Pod kill injection

@@ -43,9 +43,20 @@ def load_ae_sklearn():
             return joblib.load(p)
     return None
 
-def compute_iforest_scores(model, X):
+def compute_iforest_scores(model_obj, X):
+    # Handle dict structure from saved model
+    if isinstance(model_obj, dict):
+        model = model_obj.get('model')
+        scaler = model_obj.get('scaler')
+    else:
+        model = model_obj
+        scaler = None
+    
+    # Apply scaling if available
+    X_scaled = scaler.transform(X) if scaler is not None else X
+    
     # IsolationForest.score_samples -> higher is normal; invert to get anomaly score
-    s = model.score_samples(X)
+    s = model.score_samples(X_scaled)
     return -s
 
 def compute_ae_scores(obj, X):
@@ -88,8 +99,8 @@ def plot_hist(scores, name):
 
 def main():
     df = load_data()
-    # Exclude 'label' column if present for scoring
-    feature_cols = [c for c in df.columns if c != 'label']
+    # Exclude 'is_anomaly' column if present for scoring
+    feature_cols = [c for c in df.columns if c not in ['is_anomaly', 'label']]
     X = df[feature_cols].select_dtypes(include=['number']).fillna(0).values
 
     iforest = load_iforest()

@@ -1,15 +1,17 @@
 # DIS Repository File Inventory
 
-**Generated:** February 4, 2026  
-**Status:** Cleaned and Production-Ready
+**Generated:** February 7, 2026  
+**Status:** Production-Ready | 100k Dataset | Full Kubernetes Deployment
 
 ## 📊 Repository Statistics
 
-- **Total Python Files:** 8
-- **Total Kubernetes Manifests:** 7
-- **Total Documentation:** 5 markdown files
+- **Total Python Files:** 15 (8 core + 6 analysis + 1 controller)
+- **Total Kubernetes Manifests:** 6 (YAML files, all deployment-ready)
+- **Total Documentation:** 7 markdown files
 - **Total Scripts:** 4 automation scripts
-- **Trained Models:** 2 (.joblib files, 916 KB total)
+- **Trained Models:** 4 (.joblib files, ~2.3 MB total)
+- **Analysis Outputs:** 14 visualizations + 7 CSV metrics files
+- **Dataset:** 100,000 synthetic metrics with ground-truth labels
 
 ---
 
@@ -18,46 +20,52 @@
 ### 📁 Core Configuration (Root)
 | File | Size | Purpose | Status |
 |------|------|---------|--------|
-| `README.md` | 5 KB | Main documentation entry point | ✅ Active |
-| `requirements.txt` | <1 KB | Python dependencies | ✅ Active |
-| `docker-compose.yml` | <1 KB | Container orchestration | ✅ Active |
-| `Dockerfile.tfbase` | 1 KB | **PRIMARY**: TensorFlow image | ✅ Active |
-| `Dockerfile` | 1 KB | Alternative/reference | ⚠️ Optional |
+| `README.md` | 12 KB | Main documentation (100k dataset spec) | ✅ Production |
+| `requirements.txt` | <1 KB | Python dependencies (scikit-learn, pandas) | ✅ Active |
+| `docker-compose.yml` | <1 KB | Container orchestration reference | ✅ Reference |
+| `Dockerfile` | 1 KB | Multi-stage Python 3.11 image | ✅ Production |
 
 ### 📁 agents/ - Metrics Collection
 | File | Size | Purpose | Status |
 |------|------|---------|--------|
-| `adc_agent.py` | 2 KB | Artificial Dendritic Cell agent | ✅ Active |
-| `requirements.txt` | <1 KB | Agent-specific dependencies | ✅ Active |
+| `adc_agent.py` | 4 KB | Artificial Dendritic Cell (8-metric collector) | ✅ Production |
 
-### 📁 ml/ - Machine Learning
+### 📁 ml/ - Machine Learning Models & Training
+| File | Size | Purpose | Status |
+|-------|------|---------|--------|
+| `train_isolation_forest.py` | 1.5 KB | IsolationForest trainer (100k-optimized) | ✅ Production |
+| `train_autoencoder_sklearn.py` | 2 KB | sklearn Autoencoder trainer (100k-optimized) | ✅ Production |
+| `models/iforest_100k.joblib` | 916 KB | **PRIMARY**: Trained IF (AUPRC 0.536) | ✅ Production |
+| `models/autoencoder_100k.joblib` | 48 KB | **PRIMARY**: Trained AE (AUPRC 0.178) | ✅ Production |
+| `models/iforest.joblib` | 868 KB | Legacy IF model (smaller dataset) | ⚠️ Backup |
+| `models/ae_sklearn.joblib` | 42 KB | Legacy AE model (smaller dataset) | ⚠️ Backup |
+| `models/scaler_100k.joblib` | 5 KB | Feature scaler for 100k dataset | ✅ Production |
+
+### 📁 controller/ - Detection & Response Logic
 | File | Size | Purpose | Status |
 |------|------|---------|--------|
-| `train_isolation_forest.py` | 1 KB | **PRIMARY**: IF trainer | ✅ Active |
-| `train_autoencoder_sklearn.py` | 2 KB | **PRIMARY**: sklearn AE trainer | ✅ Active |
-| `train_autoencoder.py` | 1 KB | TensorFlow/Keras variant | ⚠️ Alternative |
-| `requirements.txt` | <1 KB | ML dependencies | ✅ Active |
-| `models/iforest.joblib` | 868 KB | Trained Isolation Forest | ✅ Active |
-| `models/ae_sklearn.joblib` | 48 KB | Trained sklearn autoencoder | ✅ Active |
+| `controller.py` | 8 KB | T-Helper + B-Cell decision logic | ✅ Production |
 
-### 📁 controller/ - Decision & Response
+### 📁 cluster/ - Kubernetes Manifests (Deployment-Ready)
 | File | Size | Purpose | Status |
-|------|------|---------|--------|
-| `controller.py` | 6 KB | T-Helper + B-Cell logic | ✅ Active |
+|-------|------|---------|--------|
+| `adc-agent-sa.yaml` | <1 KB | ServiceAccount + RBAC for agents | ✅ Deployed |
+| `agent-daemonset.yaml` | 1.5 KB | ADC agent DaemonSet (all nodes) | ✅ Deployed |
+| `example-deployment.yaml` | 1 KB | Test workload (2x nginx replicas) | ✅ Deployed |
+| `simulate-rbac.yaml` | 1.5 KB | RBAC for detection job | ✅ Deployed |
+| `simulate-detection-job.yaml` | 1.5 KB | Detection simulator Kubernetes Job | ✅ Deployed |
+| `prometheus/prometheus.yml` | 1 KB | Prometheus scrape config (service discovery) | ✅ Production |
 
-### 📁 cluster/ - Kubernetes Manifests
+### 📁 scripts/ - Automation & Orchestration
 | File | Size | Purpose | Status |
-|------|------|---------|--------|
-| `adc-agent-sa.yaml` | <1 KB | ServiceAccount for agents | ✅ Active |
-| `agent-daemonset.yaml` | 1 KB | ADC agent deployment | ✅ Active |
-| `example-deployment.yaml` | 1 KB | Test workload (nginx) | ✅ Active |
-| `simulate-rbac.yaml` | 1 KB | RBAC for detection job | ✅ Active |
-| `simulate-detection-job.yaml` | 1 KB | Detection job definition | ✅ Active |
-| `prometheus/prometheus.yml` | <1 KB | Example Prometheus config | 📚 Reference |
-| `README.md` | <1 KB | Cluster deployment guide | 📚 Documentation |
+|-------|------|---------|--------|
+| `run_experiment.ps1` | 15 KB | End-to-end pipeline (data→model→analysis→deploy) | ✅ Production |
+| `generate_metrics.py` | 2 KB | Data generator for 100k synthetic metrics | ✅ Production |
+| `simulate_detection.py` | 6 KB | Detection simulator with ensemble scoring | ✅ Production |
 
-### 📁 chaos/ - Fault Injection
-| File | Size | Purpose | Status |
+### 📁 analysis/ - Comprehensive Evaluation (6 Scripts, 14 Figures, 7 CSVs)
+| File | Purpose | Output | Status |
+|-------|---------|--------|--------|
 |------|------|---------|--------|
 | `pod-kill.yaml` | <1 KB | PodChaos experiment | ✅ Active |
 | `cpu-stress.yaml` | <1 KB | StressChaos experiment | ✅ Active |

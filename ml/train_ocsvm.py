@@ -1,24 +1,24 @@
 """
-Train a simple autoencoder using scikit-learn's MLPRegressor.
+Train a One-Class SVM for anomaly detection.
 
-This provides a TensorFlow-free alternative for environments where TensorFlow
-is unavailable (e.g., Python 3.14). It trains a model to reconstruct inputs
-and saves the trained regressor and a scaler.
+One-Class SVM showed the best performance in baseline comparisons,
+so we add it to the DIS ensemble to improve overall detection.
 
 Usage:
-  python ml/train_autoencoder_sklearn.py --input data/metrics.csv --out ml/models/ae_sklearn.joblib
+  python ml/train_ocsvm.py --input data/metrics.csv --out ml/models/ocsvm.joblib
 """
 import argparse
 import os
 import joblib
 import pandas as pd
 import numpy as np
-from sklearn.neural_network import MLPRegressor
+from sklearn.svm import OneClassSVM
 from sklearn.preprocessing import StandardScaler
 
 # Standard feature columns for 100K dataset
 FEATURE_COLS = ['cpu_percent', 'mem_percent', 'net_tx', 'net_rx',
                 'disk_read', 'disk_write', 'http_req_rate', 'response_ms']
+
 
 def main(input_csv, out_path):
     df = pd.read_csv(input_csv)
@@ -43,34 +43,39 @@ def main(input_csv, out_path):
         print(f'Training on {len(df_normal)} samples (no anomaly labels found)')
     
     X = df_normal[available_cols].fillna(0).values
+    
+    # Apply StandardScaler for consistent evaluation
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
-
-    # Improved autoencoder architecture for better anomaly detection
-    # Asymmetric architecture with stronger compression for sharper reconstruction errors
-    model = MLPRegressor(
-        hidden_layer_sizes=(64, 32, 8, 32, 64),  # Deeper with tighter bottleneck
-        activation='relu',
-        solver='adam',
-        alpha=0.001,              # L2 regularization for generalization
-        batch_size=256,           # Larger batches for stability
-        learning_rate='adaptive', # Adaptive learning rate
-        learning_rate_init=0.001,
-        max_iter=2000,            # More iterations
-        early_stopping=True,
-        validation_fraction=0.1,
-        n_iter_no_change=30,      # More patience
-        random_state=42
+    
+    # Sample for training if dataset is large (OCSVM is O(n²) memory)
+    max_train_samples = 15000
+    if len(Xs) > max_train_samples:
+        print(f'Sampling {max_train_samples} samples for training (OCSVM memory constraint)')
+        indices = np.random.RandomState(42).choice(len(Xs), max_train_samples, replace=False)
+        Xs_train = Xs[indices]
+    else:
+        Xs_train = Xs
+    
+    # One-Class SVM with RBF kernel - optimized parameters
+    print('Training One-Class SVM (this may take a few minutes)...')
+    model = OneClassSVM(
+        kernel='rbf',
+        gamma='scale',  # 1/(n_features * X.var())
+        nu=0.05,        # Upper bound on fraction of outliers
+        cache_size=1000  # MB of cache for faster training
     )
-    model.fit(Xs, Xs)
-
+    model.fit(Xs_train)
+    
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    # Save model with scaler for consistent evaluation
     joblib.dump({'model': model, 'scaler': scaler, 'feature_cols': available_cols}, out_path)
-    print(f'Saved sklearn autoencoder to {out_path}')
+    print(f'Saved One-Class SVM to {out_path}')
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--input', default='data/metrics.csv', help='Input CSV file')
-    parser.add_argument('--out', default='ml/models/ae_sklearn.joblib', help='Output model file')
+    parser.add_argument('--out', default='ml/models/ocsvm.joblib', help='Output model file')
     args = parser.parse_args()
     main(args.input, args.out)

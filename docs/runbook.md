@@ -1,103 +1,123 @@
 # DIS Experiment Runbook
 
 This runbook documents a reproducible, end-to-end in-cluster experiment to
-exercise the Cognitive Overlay Digital Immune System (DIS) scaffold. It
-assumes you have a Kubernetes cluster, `kubectl` access, Docker, and the repo
+exercise the Cognitive Overlay Digital Immune System (DIS). It
+assumes you have a Kubernetes cluster (minikube/Docker Desktop), `kubectl` access, and the repo
 cloned locally.
 
-1) Prepare local artifacts
+**Dataset:** 100,000 synthetic metrics (96,311 normal, 3,689 anomalies)
+**Models:** IsolationForest (AUPRC 0.536) + sklearn Autoencoder (AUPRC 0.178)
+**Detection latency:** 15.8ms mean, 26.5ms P99
 
-- Ensure models and data are present:
-  - `data/metrics.csv` — example metrics (already in repo)
-  - `ml/models/iforest.joblib` — train locally or build into image
-  - `ml/models/autoencoder` — trained Keras model (optional)
-
-- Build the TensorFlow test image (contains Keras trainer and simulator):
+## 1) Verify Kubernetes Cluster
 
 ```powershell
-# from repo root
-docker build -f Dockerfile.tfbase -t dis-autoencoder:tfbase .
+kubectl cluster-info
+kubectl get nodes
 ```
 
-If your cluster cannot pull local images, push the image to a registry or load
-the image into your cluster nodes (e.g., `kind load docker-image ...`).
+## 2) Prepare models and data
 
-2) Deploy example workload and monitoring config
+Models are pre-trained and available in `ml/models/`:
+- `ml/models/iforest_100k.joblib` — IsolationForest (100k dataset)
+- `ml/models/autoencoder_100k.joblib` — sklearn Autoencoder (100k dataset)
+- `data/public_dataset_100k_ml_ready.csv` — 100k metric samples (already in repo)
+
+No additional training required for standard deployment.
+
+## 3) Deploy to Kubernetes
+
+The cluster manifests use **hostPath volumes** to mount application code. First, copy the repo to minikube:
 
 ```powershell
-kubectl apply -f cluster/example-deployment.yaml
-# (Optional) Apply Prometheus scrape config if you run a Prometheus instance
-# kubectl apply -f cluster/prometheus/prometheus.yml
+minikube cp . /mnt/dis-app
 ```
 
-Verify pods:
+Then deploy all cluster resources:
 
 ```powershell
-kubectl get pods -l app=example-app -o wide
+kubectl apply -f cluster/
 ```
 
-3) Deploy aDC agent (optional local DaemonSet)
+This deploys:
+- **ServiceAccounts** — RBAC permissions for agents and jobs
+- **DaemonSet (adc-agent)** — Metrics collection on all nodes (port 8000)
+- **Deployment (example-app)** — 2x nginx replicas as detection target
+- **Service** — ClusterIP service for example-app (port 80)
+- **Job (simulate-detection)** — Detection simulation and anomaly scoring
+- **Prometheus** — Scrape config for metrics collection
 
-Edit `cluster/agent-daemonset.yaml` to point to your agent image, then:
-
-```powershell
-kubectl apply -f cluster/agent-daemonset.yaml
-```
-
-The aDC agent exposes local node metrics on port 8000. Configure Prometheus to
-scrape this port to collect antigens.
-
-4) Apply RBAC and run the in-cluster simulator job
-
-This job uses `simulate_detection.py` to demonstrate detection->response.
+## 4) Verify Deployment
 
 ```powershell
-kubectl apply -f cluster/simulate-rbac.yaml
-kubectl apply -f cluster/simulate-detection-job.yaml
+# Check all pods running
+kubectl get pods
+
+# View ADC agent metrics
+kubectl logs -l app=adc-agent
+
+# Check detection job status
 kubectl get jobs
-kubectl logs -l job=simulate-detection --tail=200
+kubectl logs job/simulate-detection
+
+# Access example-app service
+kubectl port-forward svc/example-app 8080:80  # Then visit http://localhost:8080
 ```
 
-Notes about models:
-- The Job image needs access to `ml/models/iforest.joblib` for deterministic
-  scoring. You can either:
-  - Bake the model into the image at build-time (COPY), or
-  - Mount a PersistentVolume to `/app/ml/models` and write the file there.
+**Expected Status:**
+- example-app: 2/2 Running ✓
+- adc-agent: 1/1 Running ✓
+- simulate-detection: 1/1 Running ✓
 
-5) Run trainers (alternatives)
+## 5) Run Full Analysis Pipeline
 
-- Local venv (no container):
+Optional: Re-train models or run comprehensive analysis locally:
+
 ```powershell
+# Activate Python environment
 . .venv\Scripts\Activate.ps1
-python ml/train_isolation_forest.py --input data/metrics.csv --out ml/models/iforest.joblib
-python ml/train_autoencoder_sklearn.py --input data/metrics.csv --out ml/models/ae_sklearn.joblib
+
+# Train models
+python ml/train_isolation_forest.py --input data/public_dataset_100k_ml_ready.csv --out ml/models/iforest_100k.joblib
+python ml/train_autoencoder_sklearn.py --input data/public_dataset_100k_ml_ready.csv --out ml/models/autoencoder_100k.joblib
+
+# Run all analysis scripts
+python analysis/evaluate_models.py
+python analysis/compare_baselines.py
+python analysis/ablation_study.py
+python analysis/measure_latency.py
 ```
 
-- Container (reproducible):
+Outputs saved to `results/` with CSV metrics and PNG visualizations.
+
+## 6) Orchestrate Full Pipeline
+
+Run the complete end-to-end pipeline (data prep, training, analysis, deployment):
+
 ```powershell
-docker compose build
-docker compose run --rm autoencoder
+powershell -ExecutionPolicy Bypass -File scripts/run_experiment.ps1
 ```
 
-6) Verify controller actions
+This script:
+1. Prepares 100k dataset
+2. Trains both models with cross-validation
+3. Runs comprehensive analysis (6 scripts, 14 visualizations)
+4. Generates metrics CSVs and publication-ready figures
+5. Optionally deploys to Kubernetes
 
-- Check pod labels and lifecycle after simulator runs:
-```powershell
-kubectl get pods -l app=example-app -o=jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.labels}{"\n"}{end}'
-kubectl describe pod <pod-name>
-```
+## Troubleshooting
 
-7) Collect results
+**Pods stuck in ContainerCreating:**
+- Verify code is copied to minikube: `minikube ssh "ls -la /mnt/dis-app/agents/"`
+- Check pod events: `kubectl describe pod <pod-name>`
 
-- Save Prometheus metrics (if configured) and Kubernetes events/logs to `results/`.
-- Record model artifacts in `ml/models` and zip `data/` and `results/` for paper
-  reproducibility.
+**Image pull errors:**
+- Ensure minikube Docker environment is active: `minikube docker-env | Invoke-Expression`
+- Base images (python:3.11-slim, nginx:1.25) should pull automatically
 
-Troubleshooting
-
-- pandas / numpy errors in containers: ensure `numpy` and `pandas` are
-  installed with compatible versions. The `Dockerfile.tfbase` uses the
-  `tensorflow/tensorflow:2.12.0` base image which bundles compatible wheels.
+**Model not found errors:**
+- Verify models in `ml/models/`: `ls -la ml/models/`
+- Models are included in hostPath mount to `/mnt/dis-app`
 - Image pull errors: either push to a registry or set `imagePullPolicy` to
   `Never` and make the image available on the node (e.g., `kind load docker-image`).
 - RBAC denied: confirm `simulate-sa` Role has permissions and the Job uses

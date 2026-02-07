@@ -33,6 +33,10 @@ RESULTS = ROOT / 'results'
 FIG_DIR = RESULTS / 'figures'
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
+# Standard feature columns for 100K dataset
+FEATURE_COLS = ['cpu_percent', 'mem_percent', 'net_tx', 'net_rx',
+                'disk_read', 'disk_write', 'http_req_rate', 'response_ms']
+
 
 def load_data():
     """Load metrics CSV with ground truth labels."""
@@ -43,7 +47,7 @@ def load_data():
 
 
 def load_models():
-    """Load trained Isolation Forest and Autoencoder models."""
+    """Load trained Isolation Forest, Autoencoder, OCSVM, and Ensemble models."""
     models = {}
     
     # Load Isolation Forest
@@ -62,16 +66,42 @@ def load_models():
             print(f"✓ Loaded sklearn Autoencoder from {p}")
             break
     
+    # Load One-Class SVM
+    ocsvm_paths = [RESULTS / 'ocsvm.joblib', ROOT / 'ml' / 'models' / 'ocsvm.joblib']
+    for p in ocsvm_paths:
+        if p.exists():
+            models['ocsvm'] = joblib.load(p)
+            print(f"✓ Loaded One-Class SVM from {p}")
+            break
+    
+    # Load Ensemble config
+    ensemble_paths = [RESULTS / 'ensemble.joblib', ROOT / 'ml' / 'models' / 'ensemble.joblib']
+    for p in ensemble_paths:
+        if p.exists():
+            models['ensemble_config'] = joblib.load(p)
+            print(f"✓ Loaded Ensemble config from {p}")
+            break
+    
     return models
 
 
 def compute_anomaly_scores(models, X):
     """Compute anomaly scores for each model."""
     scores = {}
+    raw_scores = {}  # For weighted ensemble
     
     # Isolation Forest scores (negate so higher = more anomalous)
     if 'iforest' in models:
-        scores['Isolation Forest'] = -models['iforest'].score_samples(X)
+        iforest_data = models['iforest']
+        if isinstance(iforest_data, dict):
+            model = iforest_data.get('model')
+            scaler = iforest_data.get('scaler')
+            Xs = scaler.transform(X) if scaler is not None else X
+        else:
+            model = iforest_data
+            Xs = X
+        raw_scores['iforest'] = -model.score_samples(Xs)
+        scores['Isolation Forest'] = raw_scores['iforest']
     
     # Autoencoder reconstruction error
     if 'ae_sklearn' in models:
@@ -81,12 +111,51 @@ def compute_anomaly_scores(models, X):
         Xs = scaler.transform(X) if scaler is not None else X
         recon = model.predict(Xs)
         mse = np.mean((Xs - recon) ** 2, axis=1)
+        raw_scores['ae'] = mse
         scores['Autoencoder (sklearn)'] = mse
     
-    # Ensemble: normalized average of available scores
-    if len(scores) >= 2:
+    # One-Class SVM scores
+    if 'ocsvm' in models:
+        ocsvm_data = models['ocsvm']
+        if isinstance(ocsvm_data, dict):
+            model = ocsvm_data.get('model')
+            scaler = ocsvm_data.get('scaler')
+            Xs = scaler.transform(X) if scaler is not None else X
+        else:
+            model = ocsvm_data
+            Xs = X
+        # decision_function: positive = normal, negative = anomaly, so negate
+        raw_scores['ocsvm'] = -model.decision_function(Xs)
+        scores['One-Class SVM'] = raw_scores['ocsvm']
+    
+    # Weighted Ensemble (if config available)
+    if 'ensemble_config' in models and len(raw_scores) >= 2:
+        config = models['ensemble_config']
+        weights = config.get('weights', {})
+        
+        # Normalize scores
+        normalized = {}
+        for name, s in raw_scores.items():
+            s_norm = (s - s.min()) / (s.max() - s.min() + 1e-10)
+            normalized[name] = s_norm
+        
+        # Apply weights
+        ensemble_scores = np.zeros(len(X))
+        total_weight = 0
+        for name, s_norm in normalized.items():
+            w = weights.get(name, 1.0 / len(normalized))
+            ensemble_scores += w * s_norm
+            total_weight += w
+        
+        if total_weight > 0:
+            ensemble_scores /= total_weight
+        
+        scores['Weighted Ensemble'] = ensemble_scores
+    
+    # Simple average ensemble as fallback
+    if len(raw_scores) >= 2 and 'Weighted Ensemble' not in scores:
         normalized_scores = []
-        for name, s in scores.items():
+        for name, s in raw_scores.items():
             s_norm = (s - s.min()) / (s.max() - s.min() + 1e-10)
             normalized_scores.append(s_norm)
         scores['Ensemble (Average)'] = np.mean(normalized_scores, axis=0)
@@ -300,13 +369,17 @@ def main():
     # Load data
     df = load_data()
     
-    # Verify label column exists
-    if 'label' not in df.columns:
-        raise ValueError("Data must contain 'label' column for ground truth")
+    # Support both 'is_anomaly' and 'label' columns
+    if 'is_anomaly' in df.columns:
+        y_true = df['is_anomaly'].values.astype(int)
+    elif 'label' in df.columns:
+        y_true = df['label'].values.astype(int)
+    else:
+        raise ValueError("Data must contain 'is_anomaly' or 'label' column")
     
-    y_true = df['label'].values.astype(int)
-    feature_cols = [c for c in df.columns if c != 'label']
-    X = df[feature_cols].select_dtypes(include=['number']).fillna(0).values
+    # Use standard feature columns
+    available_cols = [c for c in FEATURE_COLS if c in df.columns]
+    X = df[available_cols].fillna(0).values
     
     n_samples = len(y_true)
     n_anomalies = np.sum(y_true)

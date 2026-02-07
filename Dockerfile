@@ -16,24 +16,16 @@ WORKDIR /app
 
 # Copy requirements and install core dependencies
 COPY requirements.txt ./
-COPY ml/requirements.txt ml/requirements.txt
 
 RUN python -m pip install --upgrade pip setuptools wheel
 
-# Ensure a recent NumPy is present before installing pandas to avoid
-# pandas C-extension / ABI mismatches (pandas requires numpy >=1.26 for
-# modern pandas releases). Install numpy explicitly first.
 RUN pip install "numpy>=1.26"
 
-# Install regular requirements and ML requirements
+# Install all requirements from single file
 RUN pip install -r requirements.txt
-RUN pip install -r ml/requirements.txt
-
-# Install TensorFlow (CPU). Pin a version if you require reproducibility.
-RUN pip install tensorflow==2.12.0
 
 # Copy repository
 COPY . .
 
-# Default: run the Keras autoencoder trainer (override at runtime)
-CMD ["python", "ml/train_autoencoder.py", "--input", "data/metrics.csv", "--out", "ml/models/autoencoder"]
+# Default: run the sklearn autoencoder trainer
+CMD ["python", "ml/train_autoencoder_sklearn.py", "--input", "data/metrics.csv", "--out", "models/ae_sklearn.joblib"]

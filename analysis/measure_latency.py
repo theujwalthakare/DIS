@@ -100,7 +100,10 @@ def measure_inference_latency(models, X, n_iterations=100):
             start_time = time.perf_counter()
             
             if model_name == 'iforest':
-                _ = model.score_samples(sample)
+                iforest_model = model.get('model') if isinstance(model, dict) else model
+                iforest_scaler = model.get('scaler') if isinstance(model, dict) else None
+                sample_scaled = iforest_scaler.transform(sample) if iforest_scaler is not None else sample
+                _ = iforest_model.score_samples(sample_scaled)
             elif model_name == 'ae_sklearn':
                 ae = model
                 model_obj = ae.get('model') if isinstance(ae, dict) else ae
@@ -152,7 +155,11 @@ def measure_detection_delay(models, X, labels, threshold_percentile=90):
     scores = {}
     
     if 'iforest' in models:
-        scores['iforest'] = -models['iforest'].score_samples(X)
+        iforest_obj = models['iforest']
+        iforest_model = iforest_obj.get('model') if isinstance(iforest_obj, dict) else iforest_obj
+        iforest_scaler = iforest_obj.get('scaler') if isinstance(iforest_obj, dict) else None
+        X_scaled = iforest_scaler.transform(X) if iforest_scaler is not None else X
+        scores['iforest'] = -iforest_model.score_samples(X_scaled)
     
     if 'ae_sklearn' in models:
         ae = models['ae_sklearn']
@@ -343,8 +350,15 @@ def main():
     
     # Load data
     df = load_data()
-    labels = df['label'].values.astype(int)
-    feature_cols = [c for c in df.columns if c != 'label']
+    # Use 'is_anomaly' or 'label' column
+    if 'is_anomaly' in df.columns:
+        labels = df['is_anomaly'].values.astype(int)
+    elif 'label' in df.columns:
+        labels = df['label'].values.astype(int)
+    else:
+        raise ValueError("Data must contain 'is_anomaly' or 'label' column")
+    
+    feature_cols = [c for c in df.columns if c not in ['is_anomaly', 'label']]
     X = df[feature_cols].select_dtypes(include=['number']).fillna(0).values
     
     print(f"Loaded {len(labels)} samples ({np.sum(labels)} anomalies)")

@@ -3,9 +3,9 @@ services:
   autoencoder:
     build:
       context: .
-      dockerfile: Dockerfile.tfbase
-    image: dis-autoencoder:tfbase
+      dockerfile: Dockerfile
+    image: dis-autoencoder:latest
     volumes:
       - ./data:/app/data
-      - ./ml/models:/app/ml/models
-    command: ["python", "ml/train_autoencoder.py", "--input", "data/metrics.csv", "--out", "ml/models/autoencoder"]
+      - ./models:/app/models
+    command: ["python", "ml/train_autoencoder_sklearn.py", "--input", "data/metrics.csv", "--out", "models/ae_sklearn.joblib"]
