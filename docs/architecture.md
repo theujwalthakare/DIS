@@ -3,6 +3,41 @@
 This document explains the high-level mapping between biological immune system
 concepts and the repository components.
 
+## 📌 System Architecture Diagram
+
+> **Figure 1:** High-level Cognitive Overlay DIS architecture showing the three immune-inspired layers and their interaction with the Kubernetes cluster.
+
+![Cognitive Overlay Architecture](diagrams/cognitive-overlay-architecture.md)
+
+For the full interactive Mermaid diagram, see: [diagrams/cognitive-overlay-architecture.md](diagrams/cognitive-overlay-architecture.md)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        COGNITIVE OVERLAY DIS                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────────┐    │
+│  │  🟢 ADC Agent   │───▶│  🔵 T-Helper     │───▶│  🟠 B-Cell Layer    │    │
+│  │  (Sensing)      │    │  (Detection)     │    │  (Response)         │    │
+│  │                 │    │                  │    │                     │    │
+│  │  • psutil       │    │  • IsolationForest│   │  • bcell_isolate() │    │
+│  │  • Metrics:8000 │    │  • Autoencoder   │    │  • bcell_restart() │    │
+│  │  • JSON API     │    │  • score()       │    │  • bcell_rollout() │    │
+│  └────────┬────────┘    └────────┬─────────┘    └──────────┬──────────┘    │
+│           │                      │                         │               │
+│           ▼                      ▼                         │               │
+│  ┌─────────────────┐    ┌──────────────────┐              │               │
+│  │  📊 Prometheus  │    │  💾 ML Models    │              │               │
+│  │  (Observability)│    │  (Immune Memory) │              │               │
+│  └─────────────────┘    └──────────────────┘              │               │
+├───────────────────────────────────────────────────────────┼───────────────┤
+│                    KUBERNETES CLUSTER                      │ K8s API       │
+│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐  │               │
+│  │ 📦 Target Pods│  │ 📋 Deployments│  │ ⚡ Chaos Mesh │◀─┘               │
+│  │ (example-app) │  │ (ReplicaSets) │  │ (Validation)  │                  │
+│  └───────────────┘  └───────────────┘  └───────────────┘                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
 - ADC (artificial Dendritic Cell): `agents/adc_agent.py` — runs on each node,
   collects local metrics (antigens) and exposes them for evaluation.
 - T-Helper layer: `ml/` models (Isolation Forest, Autoencoder) + `controller/` —
