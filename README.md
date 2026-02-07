@@ -134,7 +134,7 @@ If you use this repository in your research, please cite:
   title={Cognitive Overlay Digital Immune System for Kubernetes},
   author={DIS Research Team},
   year={2026},
-  howpublished={\url{https://github.com/<your-org>/DIS}}
+  howpublished={\url{https://github.com/theujwalthakare/DIS}}
 }
 ```
 
